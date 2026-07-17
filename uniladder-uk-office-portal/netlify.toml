@@ -5,7 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  NPM_FLAGS = "--include=dev"
+  NPM_FLAGS = "--include=dev --verbose"
 
 [functions]
   node_bundler = "esbuild"
