@@ -33,7 +33,7 @@ export default function DashboardPage() {
       supabase.from('employees').select('*').order('name'),
       supabase
         .from('time_entries')
-        .select('id, employee_id, date, hours_worked, created_at')
+        .select('id, employee_id, date, clock_in, clock_out, hours_worked, created_at')
         .gte('date', start)
         .lt('date', endExclusive)
         .order('date', { ascending: false }),
@@ -69,6 +69,8 @@ export default function DashboardPage() {
         totalPay: totalHours * Number(employee.hourly_wage),
         latestDate: latest?.date || null,
         latestHours: latest?.hours_worked || null,
+        latestClockIn: latest?.clock_in || null,
+        latestClockOut: latest?.clock_out || null,
       }
     })
 
@@ -234,7 +236,14 @@ export default function DashboardPage() {
                   <tr key={employee.id} onClick={() => navigate(`/employees/${employee.id}`)}>
                     <td><strong>{employee.name}</strong></td>
                     <td>{formatCurrency(employee.hourly_wage)}</td>
-                    <td>{employee.latestDate ? `${formatHours(employee.latestHours)} hrs · ${formatDate(employee.latestDate)}` : 'No hours logged'}</td>
+                    <td>
+  {employee.latestDate
+    ? `${employee.latestClockIn && employee.latestClockOut
+        ? `${employee.latestClockIn.slice(0, 5)}–${employee.latestClockOut.slice(0, 5)} · `
+        : ''
+      }${formatHours(employee.latestHours)} hrs · ${formatDate(employee.latestDate)}`
+    : 'No hours logged'}
+</td>
                     <td><strong>{formatHours(employee.totalHours)}</strong></td>
                     <td><strong>{formatCurrency(employee.totalPay)}</strong></td>
                     <td>
