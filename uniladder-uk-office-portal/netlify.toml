@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."monthly-report"]
+  # Runs at 08:00 UTC on the 1st and reports on the previous calendar month.
+  schedule = "0 8 1 * *"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
