@@ -4,13 +4,13 @@
   functions = "netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "22"
+  NPM_FLAGS = "--include=dev"
 
 [functions]
   node_bundler = "esbuild"
 
 [functions."monthly-report"]
-  # Runs at 08:00 UTC on the 1st and reports on the previous calendar month.
   schedule = "0 8 1 * *"
 
 [[redirects]]
