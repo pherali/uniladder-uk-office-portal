@@ -149,7 +149,12 @@ export default function EmployeePage() {
                 <div className="entry-items">
                   {day.entries.map((entry) => (
                     <div key={entry.id}>
-                      <span>{formatHours(entry.hours_worked)} hours</span>
+                      <span>
+  {entry.clock_in && entry.clock_out
+    ? `${entry.clock_in.slice(0, 5)}–${entry.clock_out.slice(0, 5)} · `
+    : ''}
+  {formatHours(entry.hours_worked)} hours
+</span>
                       <span>{formatCurrency(Number(entry.hours_worked) * Number(employee.hourly_wage))}</span>
                       <button className="icon-button danger" type="button" onClick={() => deleteEntry(entry.id)} aria-label={`Delete ${entry.hours_worked} hour entry`}><Trash2 size={16} /></button>
                     </div>
