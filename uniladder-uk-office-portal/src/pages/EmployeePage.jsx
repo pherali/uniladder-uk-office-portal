@@ -150,8 +150,9 @@ export default function EmployeePage() {
         <div className="section-heading">
           <div><h2>Live shift</h2><p>Use these buttons when the employee starts and finishes work.</p></div>
         </div>
+        <div className="live-shift-body">
         {activeShift ? (
-          <div className="page-stack">
+          <div className="page-stack" style={{ width: '100%' }}>
             <div className="notice">Clocked in at {new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(new Date(activeShift.started_at))}.
               {' '}Elapsed: <strong>{Math.floor(Math.max(0, now - new Date(activeShift.started_at).getTime()) / 3600000)}h {String(Math.floor(Math.max(0, now - new Date(activeShift.started_at).getTime()) / 60000) % 60).padStart(2, '0')}m {String(Math.floor(Math.max(0, now - new Date(activeShift.started_at).getTime()) / 1000) % 60).padStart(2, '0')}s</strong>
             </div>
@@ -161,6 +162,7 @@ export default function EmployeePage() {
           <button className="button primary" type="button" onClick={clockIn} disabled={submitting}>{submitting ? 'Starting…' : 'Clock in now'}</button>
         )}
         <p className="form-hint">Running time is not included in payroll until clock-out. Manual shift logging remains available.</p>
+        </div>
       </section>
 
       <section className="employee-summary-grid">
