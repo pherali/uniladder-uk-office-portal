@@ -21,17 +21,18 @@ export default function TimeEntryForm({
   onSubmit,
   onCancel,
   submitting,
+  entry = null,
 }) {
   const [employeeId, setEmployeeId] = useState(
-    selectedEmployeeId || employees[0]?.id || '',
+    entry?.employee_id || selectedEmployeeId || employees[0]?.id || '',
   )
-  const [date, setDate] = useState(toLocalISODate())
-  const [clockIn, setClockIn] = useState('')
-  const [clockOut, setClockOut] = useState('')
+  const [date, setDate] = useState(entry?.date || toLocalISODate())
+  const [clockIn, setClockIn] = useState(entry?.clock_in?.slice(0, 5) || '')
+  const [clockOut, setClockOut] = useState(entry?.clock_out?.slice(0, 5) || '')
 
   useEffect(() => {
-    setEmployeeId(selectedEmployeeId || employees[0]?.id || '')
-  }, [selectedEmployeeId, employees])
+    setEmployeeId(entry?.employee_id || selectedEmployeeId || employees[0]?.id || '')
+  }, [selectedEmployeeId, employees, entry?.employee_id])
 
   const calculatedHours = useMemo(
     () => calculateHours(date, clockIn, clockOut),
@@ -140,7 +141,7 @@ export default function TimeEntryForm({
           className="button primary"
           disabled={submitting || !validShift}
         >
-          {submitting ? 'Logging…' : 'Log shift'}
+          {submitting ? 'Saving…' : entry ? 'Save changes' : 'Log shift'}
         </button>
       </div>
     </form>

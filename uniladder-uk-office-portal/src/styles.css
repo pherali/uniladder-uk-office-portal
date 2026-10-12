@@ -139,7 +139,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .entry-day-heading { display: flex; justify-content: space-between; gap: 15px; align-items: center; margin-bottom: 9px; }
 .entry-day-heading > div strong, .entry-day-heading > div span { display: block; }
 .entry-day-heading > div span { color: var(--muted); font-size: 12px; margin-top: 3px; }
-.entry-items > div { display: grid; grid-template-columns: 1fr auto 38px; gap: 16px; align-items: center; padding: 8px 10px; background: #f7f7f9; margin-top: 6px; border-radius: 12px; font-size: 13px; }
+.entry-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto 38px 38px; gap: 12px; align-items: center; padding: 8px 10px; background: #f7f7f9; margin-top: 6px; border-radius: 12px; font-size: 13px; }
 .danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid #f1cdcb; background: #fffafa; border-radius: 18px; padding: 22px; }
 .danger-zone h2 { margin-bottom: 5px; font-size: 17px; }
 .danger-zone p { color: var(--muted); font-size: 13px; margin: 0; }
@@ -188,4 +188,15 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
   .main-nav a { padding: 9px 12px; }
   .modal-card { padding: 20px; }
   .entry-day-heading { align-items: flex-start; }
+}
+
+/* Live shift card: consistent internal spacing and responsive controls. */
+.live-shift-body { padding: 24px 26px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.live-shift-body .notice { background: #f5f7fb; width: 100%; margin: 0; }
+.live-shift-body .form-hint { margin: 0; }
+.live-shift-body .button { align-self: flex-start; }
+@media (max-width: 700px) {
+  .live-shift-body { padding: 20px; }
+  .live-shift-body .button { width: 100%; }
+  .entry-items > div { grid-template-columns: minmax(0, 1fr) auto 38px 38px; gap: 6px; }
 }
