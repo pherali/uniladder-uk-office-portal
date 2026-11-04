@@ -163,6 +163,34 @@ export default function EmployeePage() {
     setSubmitting(false)
   }
 
+  const changeBreak = async (takeBreak) => {
+    if (!activeShift) return
+    setSubmitting(true)
+    setError('')
+    const { error: breakError } = await supabase.rpc(
+      takeBreak ? 'start_shift_break' : 'end_shift_break',
+      { p_employee_id: employeeId },
+    )
+    if (breakError) setError(breakError.message)
+    else await load()
+    setSubmitting(false)
+  }
+
+  const formatElapsed = (seconds) => {
+    const total = Math.max(0, Math.floor(seconds))
+    return `${Math.floor(total / 3600)}h ${String(Math.floor(total / 60) % 60).padStart(2, '0')}m ${String(total % 60).padStart(2, '0')}s`
+  }
+
+  const breakElapsedSeconds = activeShift
+    ? Number(activeShift.break_seconds || 0) + (activeShift.break_started_at
+      ? Math.max(0, (now - new Date(activeShift.break_started_at).getTime()) / 1000)
+      : 0)
+    : 0
+
+  const workedElapsedSeconds = activeShift
+    ? Math.max(0, (now - new Date(activeShift.started_at).getTime()) / 1000 - breakElapsedSeconds)
+    : 0
+
   const clockOut = async () => {
     if (!activeShift) return
     setSubmitting(true)
@@ -215,10 +243,27 @@ export default function EmployeePage() {
         <div className="live-shift-body">
         {activeShift ? (
           <div className="page-stack" style={{ width: '100%' }}>
-            <div className="notice">Clocked in at {new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(new Date(activeShift.started_at))}.
-              {' '}Elapsed: <strong>{Math.floor(Math.max(0, now - new Date(activeShift.started_at).getTime()) / 3600000)}h {String(Math.floor(Math.max(0, now - new Date(activeShift.started_at).getTime()) / 60000) % 60).padStart(2, '0')}m {String(Math.floor(Math.max(0, now - new Date(activeShift.started_at).getTime()) / 1000) % 60).padStart(2, '0')}s</strong>
+            <div className="notice">
+              {activeShift.break_started_at ? 'On break' : 'Working'} · Clocked in at{' '}
+              {new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(new Date(activeShift.started_at))}
+              <div>Worked: <strong>{formatElapsed(workedElapsedSeconds)}</strong></div>
+              <div>Breaks: <strong>{formatElapsed(breakElapsedSeconds)}</strong></div>
+              {activeShift.break_started_at && <div>Current break started at{' '}
+                {new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }).format(new Date(activeShift.break_started_at))}
+              </div>}
             </div>
-            <button className="button primary" type="button" onClick={clockOut} disabled={submitting}>{submitting ? 'Finishing…' : 'Clock out'}</button>
+            {activeShift.break_started_at ? (
+              <button className="button primary" type="button" onClick={() => changeBreak(false)} disabled={submitting}>
+                {submitting ? 'Resuming…' : 'Resume work'}
+              </button>
+            ) : (
+              <button className="button secondary" type="button" onClick={() => changeBreak(true)} disabled={submitting}>
+                {submitting ? 'Starting break…' : 'Take a break'}
+              </button>
+            )}
+            <button className="button primary" type="button" onClick={clockOut} disabled={submitting}>
+              {submitting ? 'Finishing…' : 'Clock out and finish shift'}
+            </button>
           </div>
         ) : (
           <div className="page-stack" style={{ width: '100%' }}>
@@ -253,7 +298,7 @@ export default function EmployeePage() {
             )}
           </div>
         )}
-        <p className="form-hint">Running time is not included in payroll until clock-out. Manual shift logging remains available.</p>
+        <p className="form-hint">Unpaid breaks pause the paid-hours timer. Multiple breaks are supported, and clock-out records only worked time. Manual shift logging remains available.</p>
         </div>
       </section>
 
@@ -301,6 +346,7 @@ export default function EmployeePage() {
     ? `${entry.clock_in.slice(0, 5)}–${entry.clock_out.slice(0, 5)} · `
     : ''}
   {formatHours(entry.hours_worked)} hours
+  {Number(entry.break_seconds || 0) > 0 && ` · ${formatElapsed(Number(entry.break_seconds))} unpaid break`}
 </span>
                       <span>{formatCurrency(Number(entry.hours_worked) * Number(employee.hourly_wage))}</span>
                       <button className="icon-button" type="button" onClick={() => setModal({ type: 'edit-entry', entry })} aria-label="Edit shift"><Pencil size={16} /></button>
