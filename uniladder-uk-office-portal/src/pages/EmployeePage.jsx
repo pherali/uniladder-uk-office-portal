@@ -20,6 +20,9 @@ export default function EmployeePage() {
   const [submitting, setSubmitting] = useState(false)
   const [activeShift, setActiveShift] = useState(null)
   const [now, setNow] = useState(Date.now())
+  const [showEarlierClockIn, setShowEarlierClockIn] = useState(false)
+  const [earlierClockInTime, setEarlierClockInTime] = useState('')
+  const [clockInValidation, setClockInValidation] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -92,12 +95,71 @@ export default function EmployeePage() {
     setSubmitting(false)
   }
 
-  const clockIn = async () => {
-    setSubmitting(true)
+  // Use London calendar time, even when an employee opens the portal elsewhere.
+  const londonDateParts = (date) => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(date)
+    const get = (type) => Number(parts.find((part) => part.type === type)?.value)
+    return { year: get('year'), month: get('month'), day: get('day') }
+  }
+
+  const londonOffsetMinutes = (date) => {
+    const name = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London', timeZoneName: 'shortOffset',
+    }).formatToParts(date).find((part) => part.type === 'timeZoneName')?.value || 'GMT'
+    const match = name.match(/GMT([+-])(\\d{1,2})(?::(\\d{2}))?/)
+    if (!match) return 0
+    return (match[1] === '+' ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3] || 0))
+  }
+
+  const clockIn = async (earlier = false) => {
+    setClockInValidation('')
     setError('')
-    const { error: startError } = await supabase.from('active_shifts').insert({ employee_id: employeeId })
+    const currentTime = new Date()
+    let startedAt = currentTime.toISOString()
+
+    if (earlier) {
+      if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(earlierClockInTime)) {
+        setClockInValidation('Select a valid start time.')
+        return
+      }
+      const { year, month, day } = londonDateParts(currentTime)
+      const [hour, minute] = earlierClockInTime.split(':').map(Number)
+      const localAsUTC = Date.UTC(year, month - 1, day, hour, minute)
+      // Determine the London UTC offset at the selected clock-in time.
+      const offset = londonOffsetMinutes(new Date(localAsUTC))
+      const selected = new Date(localAsUTC - offset * 60000)
+      const selectedLondon = londonDateParts(selected)
+      const selectedHourMinute = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).format(selected)
+      if (selectedLondon.day !== day || selectedLondon.month !== month ||
+          selectedLondon.year !== year || selectedHourMinute !== earlierClockInTime) {
+        setClockInValidation('That time is not valid in London today.')
+        return
+      }
+      if (selected.getTime() > currentTime.getTime()) {
+        setClockInValidation('Start time cannot be in the future.')
+        return
+      }
+      if (currentTime.getTime() - selected.getTime() >= 24 * 60 * 60 * 1000) {
+        setClockInValidation('Start time must be within the last 24 hours.')
+        return
+      }
+      startedAt = selected.toISOString()
+    }
+
+    setSubmitting(true)
+    const { error: startError } = await supabase.from('active_shifts').insert({
+      employee_id: employeeId, started_at: startedAt,
+    })
     if (startError) setError(startError.message)
-    await load()
+    else {
+      setShowEarlierClockIn(false)
+      setEarlierClockInTime('')
+      await load()
+    }
     setSubmitting(false)
   }
 
@@ -159,7 +221,37 @@ export default function EmployeePage() {
             <button className="button primary" type="button" onClick={clockOut} disabled={submitting}>{submitting ? 'Finishing…' : 'Clock out'}</button>
           </div>
         ) : (
-          <button className="button primary" type="button" onClick={clockIn} disabled={submitting}>{submitting ? 'Starting…' : 'Clock in now'}</button>
+          <div className="page-stack" style={{ width: '100%' }}>
+            <button className="button primary" type="button" onClick={() => clockIn(false)} disabled={submitting}>
+              {submitting ? 'Starting…' : 'Clock in now'}
+            </button>
+            {!showEarlierClockIn ? (
+              <button className="button secondary" type="button" onClick={() => {
+                setShowEarlierClockIn(true)
+                setClockInValidation('')
+              }} disabled={submitting}>Forgot to clock in? Choose an earlier time</button>
+            ) : (
+              <div className="form-stack">
+                <label>
+                  Actual start time (today, London time)
+                  <input type="time" value={earlierClockInTime}
+                    onChange={(event) => { setEarlierClockInTime(event.target.value); setClockInValidation('') }}
+                    required />
+                </label>
+                {clockInValidation && <div className="notice error" role="alert">{clockInValidation}</div>}
+                <p className="form-hint">The live timer will count from the time you enter. Clock-out will save the full duration.</p>
+                <div className="form-actions">
+                  <button className="button secondary" type="button" onClick={() => {
+                    setShowEarlierClockIn(false)
+                    setEarlierClockInTime('')
+                    setClockInValidation('')
+                  }} disabled={submitting}>Cancel</button>
+                  <button className="button primary" type="button" onClick={() => clockIn(true)}
+                    disabled={submitting || !earlierClockInTime}>{submitting ? 'Starting…' : 'Clock in from earlier time'}</button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
         <p className="form-hint">Running time is not included in payroll until clock-out. Manual shift logging remains available.</p>
         </div>
