@@ -108,7 +108,7 @@ export default function EmployeePage() {
     const name = new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Europe/London', timeZoneName: 'shortOffset',
     }).formatToParts(date).find((part) => part.type === 'timeZoneName')?.value || 'GMT'
-    const match = name.match(/GMT([+-])(\\d{1,2})(?::(\\d{2}))?/)
+    const match = name.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/)
     if (!match) return 0
     return (match[1] === '+' ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3] || 0))
   }
@@ -120,7 +120,7 @@ export default function EmployeePage() {
     let startedAt = currentTime.toISOString()
 
     if (earlier) {
-      if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(earlierClockInTime)) {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(earlierClockInTime)) {
         setClockInValidation('Select a valid start time.')
         return
       }
