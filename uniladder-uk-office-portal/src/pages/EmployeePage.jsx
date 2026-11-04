@@ -23,6 +23,12 @@ export default function EmployeePage() {
   const [showEarlierClockIn, setShowEarlierClockIn] = useState(false)
   const [earlierClockInTime, setEarlierClockInTime] = useState('')
   const [clockInValidation, setClockInValidation] = useState('')
+  const [breakRecords, setBreakRecords] = useState([])
+  const [breakMode, setBreakMode] = useState('')
+  const [breakStart, setBreakStart] = useState('')
+  const [breakEnd, setBreakEnd] = useState('')
+  const [breakValidation, setBreakValidation] = useState('')
+
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -46,6 +52,11 @@ export default function EmployeePage() {
     else setEntries(entriesResult.data || [])
     if (activeResult.error) setError(activeResult.error.message)
     else setActiveShift(activeResult.data)
+    const { data: breaksData, error: breaksError } = await supabase
+      .from('shift_break_records').select('*').eq('employee_id', employeeId)
+      .order('started_at', { ascending: false })
+    if (breaksError) setError(breaksError.message)
+    else setBreakRecords(breaksData || [])
     setLoading(false)
   }, [employeeId, month])
 
@@ -169,12 +180,73 @@ export default function EmployeePage() {
     setError('')
     const { error: breakError } = await supabase.rpc(
       takeBreak ? 'start_shift_break' : 'end_shift_break',
-      { p_employee_id: employeeId },
+      { p_employee_id: employeeId, ...(takeBreak ? { p_started_at: null } : {}) },
     )
     if (breakError) setError(breakError.message)
     else await load()
     setSubmitting(false)
   }
+
+  // Calendar inputs are entered in London local time, independent of device timezone.
+  const londonInputValue = (date = new Date()) => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(date)
+    const part = (key) => parts.find((item) => item.type === key)?.value
+    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`
+  }
+
+  const parseLondonInput = (value) => {
+    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(value)) return null
+    const [datePart, clockPart] = value.split('T')
+    const [y, m, d] = datePart.split('-').map(Number)
+    const [h, min] = clockPart.split(':').map(Number)
+    const utcLike = Date.UTC(y, m - 1, d, h, min)
+    const result = new Date(utcLike - londonOffsetMinutes(new Date(utcLike)) * 60000)
+    return londonInputValue(result) === value ? result : null
+  }
+
+  const openBreakForm = (mode, entry = null) => {
+    setBreakMode(entry ? { mode, entry } : { mode })
+    setBreakStart(londonInputValue())
+    setBreakEnd(londonInputValue())
+    setBreakValidation('')
+  }
+
+  const savePastBreak = async () => {
+    if (!breakMode) return
+    const start = parseLondonInput(breakStart)
+    const end = breakMode.mode === 'finished' ? parseLondonInput(breakEnd) : null
+    if (!start || (breakMode.mode === 'finished' && !end)) {
+      setBreakValidation('Choose valid London date and time values.')
+      return
+    }
+    if (start.getTime() > Date.now() || (end && (end <= start || end.getTime() > Date.now()))) {
+      setBreakValidation('Break times must be in the past, with the end after the start.')
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    const payload = breakMode.mode === 'ongoing'
+      ? await supabase.rpc('start_shift_break', {
+          p_employee_id: employeeId, p_started_at: start.toISOString(),
+        })
+      : await supabase.rpc('log_shift_break', {
+          p_employee_id: employeeId, p_started_at: start.toISOString(),
+          p_ended_at: end.toISOString(), p_time_entry_id: breakMode.entry?.id || null,
+        })
+    if (payload.error) setBreakValidation(payload.error.message)
+    else {
+      setBreakMode('')
+      await load()
+    }
+    setSubmitting(false)
+  }
+
+  const timeOnly = (value) => new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(value))
 
   const formatElapsed = (seconds) => {
     const total = Math.max(0, Math.floor(seconds))
@@ -260,6 +332,29 @@ export default function EmployeePage() {
               <button className="button secondary" type="button" onClick={() => changeBreak(true)} disabled={submitting}>
                 {submitting ? 'Starting break…' : 'Take a break'}
               </button>
+            )}
+            {!activeShift.break_started_at && (
+              <button className="button secondary" type="button"
+                onClick={() => openBreakForm('ongoing')} disabled={submitting}>
+                Forgot to start a break?
+              </button>
+            )}
+            {!activeShift.break_started_at && (
+              <button className="button secondary" type="button"
+                onClick={() => openBreakForm('finished')} disabled={submitting}>
+                Add a break already taken
+              </button>
+            )}
+            {breakRecords.filter((b) => b.shift_started_at === activeShift.started_at).length > 0 && (
+              <div className="form-hint">
+                <strong>Recorded breaks:</strong>{' '}
+                {breakRecords.filter((b) => b.shift_started_at === activeShift.started_at)
+                  .slice().reverse().map((b) => (
+                    <div key={b.id}>{timeOnly(b.started_at)}–{timeOnly(b.ended_at)}
+                      {' · '}{formatElapsed((new Date(b.ended_at) - new Date(b.started_at)) / 1000)}
+                    </div>
+                  ))}
+              </div>
             )}
             <button className="button primary" type="button" onClick={clockOut} disabled={submitting}>
               {submitting ? 'Finishing…' : 'Clock out and finish shift'}
@@ -347,8 +442,15 @@ export default function EmployeePage() {
     : ''}
   {formatHours(entry.hours_worked)} hours
   {Number(entry.break_seconds || 0) > 0 && ` · ${formatElapsed(Number(entry.break_seconds))} unpaid break`}
+  {breakRecords.filter((b) => b.time_entry_id === entry.id).map((b) => (
+    <span key={b.id} style={{ display: 'block', fontSize: '0.85em' }}>
+      Break: {timeOnly(b.started_at)}–{timeOnly(b.ended_at)}
+      {' · '}{formatElapsed((new Date(b.ended_at) - new Date(b.started_at)) / 1000)}
+    </span>
+  ))}
 </span>
                       <span>{formatCurrency(Number(entry.hours_worked) * Number(employee.hourly_wage))}</span>
+                      <button className="text-button" type="button" onClick={() => openBreakForm('finished', entry)}>Add break</button>
                       <button className="icon-button" type="button" onClick={() => setModal({ type: 'edit-entry', entry })} aria-label="Edit shift"><Pencil size={16} /></button>
                       <button className="icon-button danger" type="button" onClick={() => deleteEntry(entry.id)} aria-label={`Delete ${entry.hours_worked} hour entry`}><Trash2 size={16} /></button>
                     </div>
@@ -365,6 +467,34 @@ export default function EmployeePage() {
         <button className="button danger" type="button" onClick={deleteEmployee}><Trash2 size={16} /> Delete employee</button>
       </section>
 
+      {breakMode && (
+        <Modal title={breakMode.mode === 'ongoing' ? 'Start a break from an earlier time' : 'Log a missed break'}
+          description={breakMode.mode === 'ongoing'
+            ? 'Enter when your current break began. The break timer will continue live until you resume.'
+            : 'Enter when the break started and finished. The duration is deducted from paid hours.'}
+          onClose={() => setBreakMode('')}>
+          <div className="form-stack">
+            <label>Break started (London time)
+              <input type="datetime-local" value={breakStart}
+                onChange={(e) => { setBreakStart(e.target.value); setBreakValidation('') }} />
+            </label>
+            {breakMode.mode === 'finished' && (
+              <label>Break finished (London time)
+                <input type="datetime-local" value={breakEnd}
+                  onChange={(e) => { setBreakEnd(e.target.value); setBreakValidation('') }} />
+              </label>
+            )}
+            {breakValidation && <div className="notice error" role="alert">{breakValidation}</div>}
+            <div className="form-actions">
+              <button className="button secondary" type="button" onClick={() => setBreakMode('')}
+                disabled={submitting}>Cancel</button>
+              <button className="button primary" type="button" onClick={savePastBreak} disabled={submitting}>
+                {submitting ? 'Saving…' : breakMode.mode === 'ongoing' ? 'Start live break' : 'Save break'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {modal === 'edit' && (
         <Modal title="Edit employee" description="Update the employee’s name or current hourly wage." onClose={() => setModal(null)}>
           <EmployeeForm employee={employee} onSubmit={saveEmployee} onCancel={() => setModal(null)} submitting={submitting} />
