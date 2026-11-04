@@ -198,7 +198,7 @@ export default function EmployeePage() {
   }
 
   const parseLondonInput = (value) => {
-    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(value)) return null
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null
     const [datePart, clockPart] = value.split('T')
     const [y, m, d] = datePart.split('-').map(Number)
     const [h, min] = clockPart.split(':').map(Number)
