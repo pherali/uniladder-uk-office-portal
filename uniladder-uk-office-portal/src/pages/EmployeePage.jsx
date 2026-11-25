@@ -28,6 +28,9 @@ export default function EmployeePage() {
   const [breakStart, setBreakStart] = useState('')
   const [breakEnd, setBreakEnd] = useState('')
   const [breakValidation, setBreakValidation] = useState('')
+  const [clockOutTime, setClockOutTime] = useState('')
+  const [clockOutValidation, setClockOutValidation] = useState('')
+  const [recoveryShift, setRecoveryShift] = useState(null)
 
 
   const load = useCallback(async () => {
@@ -263,13 +266,42 @@ export default function EmployeePage() {
     ? Math.max(0, (now - new Date(activeShift.started_at).getTime()) / 1000 - breakElapsedSeconds)
     : 0
 
+  const openClockOutRecovery = () => {
+    setRecoveryShift(activeShift.started_at)
+    setClockOutTime('')
+    setClockOutValidation('')
+    setError('')
+  }
+
+  const saveRecoveredClockOut = async () => {
+    const end = parseLondonInput(clockOutTime)
+    const start = new Date(recoveryShift).getTime()
+    if (!end || end.getTime() <= start || end.getTime() - start > 86400000 || end.getTime() > Date.now()) {
+      setClockOutValidation('Enter a valid London time after clock-in, within 24 hours of clock-in and not in the future.')
+      return
+    }
+    setSubmitting(true)
+    setClockOutValidation('')
+    const { error: finishError } = await supabase.rpc('finish_active_shift_at', {
+      p_employee_id: employeeId, p_ended_at: end.toISOString(), p_expected_start: recoveryShift,
+    })
+    if (finishError) setClockOutValidation(finishError.message)
+    else { setRecoveryShift(null); await load() }
+    setSubmitting(false)
+  }
+
   const clockOut = async () => {
     if (!activeShift) return
+    if (Date.now() - new Date(activeShift.started_at).getTime() >= 86400000) {
+      openClockOutRecovery()
+      return
+    }
     setSubmitting(true)
     setError('')
     const { error: finishError } = await supabase.rpc('finish_active_shift', { p_employee_id: employeeId })
-    if (finishError) setError(finishError.message)
-    await load()
+    if (finishError?.message.includes('no more than 24 hours')) openClockOutRecovery()
+    else if (finishError) setError(finishError.message)
+    else await load()
     setSubmitting(false)
   }
 
@@ -324,6 +356,9 @@ export default function EmployeePage() {
                 {new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }).format(new Date(activeShift.break_started_at))}
               </div>}
             </div>
+            {now - new Date(activeShift.started_at).getTime() >= 86400000 && (
+              <div className="notice error">This shift is overdue. Clock out using your actual finish time before starting another shift.</div>
+            )}
             {activeShift.break_started_at ? (
               <button className="button primary" type="button" onClick={() => changeBreak(false)} disabled={submitting}>
                 {submitting ? 'Resuming…' : 'Resume work'}
@@ -467,6 +502,24 @@ export default function EmployeePage() {
         <button className="button danger" type="button" onClick={deleteEmployee}><Trash2 size={16} /> Delete employee</button>
       </section>
 
+      {recoveryShift && (
+        <Modal title="Forgot to clock out?" description="Enter the actual time you finished working. All times are London time." onClose={() => { if (!submitting) setRecoveryShift(null) }}>
+          <div className="form-stack">
+            <p>Original clock-in: {londonInputValue(new Date(recoveryShift)).replace('T', ' ')}</p>
+            <label>Actual clock-out date and time
+              <input type="datetime-local" value={clockOutTime}
+                min={londonInputValue(new Date(recoveryShift))}
+                max={londonInputValue(new Date(Math.min(Date.now(), new Date(recoveryShift).getTime() + 86400000)))}
+                onChange={(e) => { setClockOutTime(e.target.value); setClockOutValidation('') }} />
+            </label>
+            {clockOutValidation && <div className="notice error" role="alert">{clockOutValidation}</div>}
+            <div className="form-actions">
+              <button className="button secondary" type="button" onClick={() => setRecoveryShift(null)} disabled={submitting}>Cancel</button>
+              <button className="button primary" type="button" onClick={saveRecoveredClockOut} disabled={submitting || !clockOutTime}>{submitting ? 'Saving…' : 'Confirm clock-out'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {breakMode && (
         <Modal title={breakMode.mode === 'ongoing' ? 'Start a break from an earlier time' : 'Log a missed break'}
           description={breakMode.mode === 'ongoing'
